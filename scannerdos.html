@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asistencia QR Móvil</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background-color: #eef4f7;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 25px;
+    }
+    #reader {
+      width: 90%;
+      max-width: 400px;
+      border: 2px solid #3498db;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    #status {
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-weight: bold;
+      font-size: 1.1em;
+      min-height: 25px;
+      width: 90%;
+      max-width: 400px;
+      box-sizing: border-box;
+      word-wrap: break-word;
+      background-color: #e0f2f7;
+      color: #2196f3;
+      border: 1px solid #90caf9;
+    }
+    .instruction {
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #7f8c8d;
+    }
+  </style>
+</head>
+<body>
+  <h1>Control de Asistencia</h1>
+  <div id="reader"></div>
+  <div id="status">Cargando cámara...</div>
+  <p class="instruction">Apunta tu celular al código QR para registrar tu asistencia.</p>
+
+  <script>
+    // **TU URL DE APLICACIÓN WEB DE GOOGLE APPS SCRIPT**
+    const GOOGLE_APPS_SCRIPT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzyzD9I3Q9RmYc8eLchXkiLmCuIfiWGkPF3iQgdEo1S7T85lee_Q-gYov0F4eilYPi_/exec";
+
+    let lastScannedData = null;
+    const COOLDOWN_MS = 3000; // 3 segundos para evitar re-escaneos rápidos del mismo QR
+
+    const statusElement = document.getElementById("status");
+
+    // Inicializar el escáner HTML5 QR Code
+    const html5QrcodeScanner = new Html5QrcodeScanner(
+      "reader",
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 }, // Usa el formato de objeto correcto
+        disableFlip: false // Permite que el escáner intente detectar QR invertidos
+      },
+      false // verbose=false, para no mostrar mensajes de depuración en la consola
+    );
+
+    // Función para actualizar el mensaje de estado en la UI
+    function updateStatus(message) {
+        statusElement.textContent = message;
+    }
+
+    // Función para enviar datos al Google Apps Script
+    async function sendDataToGoogleSheets(data) {
+      updateStatus("Enviando datos...");
+      try {
+        await fetch(GOOGLE_APPS_SCRIPT_WEB_APP_URL, {
+          method: 'POST',
+          mode: 'no-cors', // ¡CRUCIAL para evitar problemas CORS con Apps Script!
+          cache: 'no-cache',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        });
+
+        // Con 'no-cors', no podemos inspeccionar la respuesta del servidor.
+        // Asumimos que si no hay un error de red, el Apps Script recibió la solicitud.
+        updateStatus("✅ ¡Registro enviado! Verifica tu asistencia en la hoja.");
+
+      } catch (error) {
+        updateStatus("❌ Error de red al enviar datos.");
+        console.error("Error en la solicitud Fetch:", error);
+      } finally {
+        // Después del cooldown, limpiar el estado y permitir nuevo escaneo
+        setTimeout(() => {
+            lastScannedData = null; // Permite escanear de nuevo el mismo QR
+            html5QrcodeScanner.resume(); // Reanuda el escáner
+            updateStatus("Esperando escaneo...");
+        }, COOLDOWN_MS);
+      }
+    }
+
+    // Callback cuando un QR es escaneado exitosamente
+    function onScanSuccess(decodedText, decodedResult) {
+      // Si el mismo QR fue escaneado muy recientemente, ignorar
+      if (decodedText === lastScannedData) {
+        return;
+      }
+      lastScannedData = decodedText; // Guardar el último QR escaneado
+
+      updateStatus("QR detectado. Procesando...");
+      html5QrcodeScanner.pause(); // Pausar el escáner para evitar lecturas duplicadas inmediatas
+
+      try {
+        const qrData = JSON.parse(decodedText);
+
+        if (!qrData.id || !qrData.nombre) {
+          throw new Error("El QR no contiene 'id' y/o 'nombre' válidos.");
+        }
+
+        sendDataToGoogleSheets({
+          id: qrData.id,
+          nombre: qrData.nombre
+        });
+
+      } catch (error) {
+        updateStatus("❌ QR no válido o error: " + error.message);
+        console.error("Error al procesar QR:", error);
+        // Si hay un error, aún así aplicar el cooldown antes de reanudar
+        setTimeout(() => {
+            lastScannedData = null;
+            html5QrcodeScanner.resume();
+            updateStatus("Esperando escaneo...");
+        }, COOLDOWN_MS);
+      }
+    }
+
+    // Callback cuando el escaneo falla (solo para depuración, no afecta el UI normalmente)
+    function onScanFailure(error) {
+      // console.warn(`Error de escaneo: ${error}`);
+    }
+
+    // ********* PUNTO CLAVE: Inicia el escáner con el método .render()
+    // Esto intenta iniciar la cámara inmediatamente y manejar la selección de la cámara.
+    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+  </script>
+</body>
+</html>
