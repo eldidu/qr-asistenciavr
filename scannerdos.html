@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Asistencia QR Móvil</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -60,24 +60,13 @@
   <p class="instruction">Apunta tu celular al código QR para registrar tu asistencia.</p>
 
   <script>
-    // **TU URL DE APLICACIÓN WEB DE GOOGLE APPS SCRIPT**
+    // TU URL DE APLICACIÓN WEB DE GOOGLE APPS SCRIPT
     const GOOGLE_APPS_SCRIPT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzyzD9I3Q9RmYc8eLchXkiLmCuIfiWGkPF3iQgdEo1S7T85lee_Q-gYov0F4eilYPi_/exec";
 
     let lastScannedData = null;
     const COOLDOWN_MS = 3000; // 3 segundos para evitar re-escaneos rápidos del mismo QR
 
     const statusElement = document.getElementById("status");
-
-    // Inicializar el escáner HTML5 QR Code
-    const html5QrcodeScanner = new Html5QrcodeScanner(
-      "reader",
-      {
-        fps: 10,
-        qrbox: { width: 250, height: 250 }, // Usa el formato de objeto correcto
-        disableFlip: false // Permite que el escáner intente detectar QR invertidos
-      },
-      false // verbose=false, para no mostrar mensajes de depuración en la consola
-    );
 
     // Función para actualizar el mensaje de estado en la UI
     function updateStatus(message) {
@@ -90,7 +79,8 @@
       try {
         await fetch(GOOGLE_APPS_SCRIPT_WEB_APP_URL, {
           method: 'POST',
-          mode: 'no-cors', // ¡CRUCIAL para evitar problemas CORS con Apps Script!
+          // ¡ESTO ES CRUCIAL! Le dice al navegador que no aplique CORS a la respuesta
+          mode: 'no-cors',
           cache: 'no-cache',
           headers: {
             'Content-Type': 'application/json'
@@ -155,9 +145,12 @@
       // console.warn(`Error de escaneo: ${error}`);
     }
 
-    // ********* PUNTO CLAVE: Inicia el escáner con el método .render()
-    // Esto intenta iniciar la cámara inmediatamente y manejar la selección de la cámara.
-    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    // ********* PUNTO CLAVE: Inicialización de scanner como en tu código original que funciona ********
+    const html5QrcodeScanner = new Html5QrcodeScanner("reader", {
+      fps: 10,
+      qrbox: 250 // Usando el formato de tu código anterior
+    });
+    html5QrcodeScanner.render(onScanSuccess); // Usando render con un solo parámetro
 
   </script>
 </body>
